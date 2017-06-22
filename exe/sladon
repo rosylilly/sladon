@@ -1,0 +1,4 @@
+#!/usr/bin/env ruby
+
+require 'sladon/cli'
+Sladon::CLI.start(ARGV)
