@@ -5,7 +5,7 @@ class Sladon::Config
     @properties ||= []
   end
 
-  def self.property(name)
+  def self.property(name, default = nil)
     name = name.to_s.to_sym
     return if properties.include?(name)
 
@@ -15,7 +15,7 @@ class Sladon::Config
     define_method(name) do
       return instance_variable_get("@#{name}") if instance_variable_defined?("@#{name}")
 
-      instance_variable_set("@#{name}", ENV["SLADON_#{name.to_s.upcase}"])
+      instance_variable_set("@#{name}", ENV["SLADON_#{name.to_s.upcase}"] || default)
     end
   end
 
@@ -29,4 +29,5 @@ class Sladon::Config
   property :base_url
   property :bearer_token
   property :webhook_url
+  property :log_level, 'INFO'
 end

@@ -2,6 +2,7 @@ require 'thor'
 require 'sladon'
 
 class Sladon::CLI < Thor
+  desc 'start', 'Launch mastodon -> slack adapter'
   def start
     client = Sladon::Client.new(config)
 

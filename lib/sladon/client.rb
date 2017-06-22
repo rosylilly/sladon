@@ -10,7 +10,7 @@ class Sladon::Client
     @rest_client = Mastodon::REST::Client.new(base_url: base_url, bearer_token: bearer_token)
     @streaming_url = URI.join(base_url, '/api/v1/streaming/').to_s
     @queue = Queue.new
-    @logger = Logger.new(STDOUT)
+    @logger = Logger.new(STDOUT, level: config.log_level)
     @notifier = Slack::Notifier.new(config.webhook_url)
     @ws = connect
   end
@@ -39,17 +39,17 @@ class Sladon::Client
       ws.on(:message) do |msg|
         case msg.type
         when :ping
-          l.info('sladon: Received ping message')
+          l.debug('sladon: Received ping message')
           send('', type: 'pong')
         when :pong
-          l.info('sladon: Received pong message')
+          l.debug('sladon: Received pong message')
         when :text
           c.on_message(msg)
         end
       end
     end
   rescue => e
-    logger.error(e)
+    logger.error("#{e.class}: #{e.message}")
   end
 
   def on_message(msg)
@@ -62,9 +62,9 @@ class Sladon::Client
       payload = Oj.load(data['payload'])
       return if payload['type'] != 'mention'
 
+      logger.info("Reply received: #{payload['status']['content'].to_s.gsub(/<[^>]*>/, '')}")
       logger.debug(payload)
       result = notifier.ping(build_slack(payload))
-      logger.info(payload)
       logger.debug(result)
     rescue => e
       logger.error("#{e.class}: #{e.message}")
@@ -72,17 +72,22 @@ class Sladon::Client
   end
 
   def start
-    keep_connection
+    keep_thread = keep_connection
+
+    Signal.trap(:INT) { exit 0 }
+    Signal.trap(:QUIT) { exit 0 }
 
     loop do
       message = @queue.deq
-      break if message.equal?(CONNECTION_CLOSED)
+      if message.equal?(CONNECTION_CLOSED)
+        keep_thread.kill
+        break
+      end
     end
   end
 
   def keep_connection
-    ws = @ws
-    Thread.start do
+    Thread.new(@ws) do |ws|
       loop do
         sleep(30)
         ws.send('', type: 'ping')
@@ -92,13 +97,14 @@ class Sladon::Client
 
   def build_slack(payload)
     text = payload['status']['content'].to_s.gsub(/<[^>]*>/, '')
+
     {
       attachments: [
         {
           color: '#444b5d',
           text: text,
           author_name: "@#{payload['account']['username']}",
-          author_link: payload['account']['url'],
+          author_link: payload['status']['url'],
           author_icon: URI.join(base_url, payload['account']['avatar_static'])
         }
       ]
